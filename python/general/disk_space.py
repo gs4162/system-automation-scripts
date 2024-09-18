@@ -25,7 +25,10 @@ def check_disk_usage(location, threshold):
     disk_usage_stat['used_gb'] = f"{used_gb:.2f}"
     disk_usage_stat['free_gb'] = f"{free_gb:.2f}"
     disk_usage_stat['usage_percent'] = f"{usage_percent:.2f}"
-
+    if usage_percent > threshold:
+        disk_usage_stat[f'threshold_{threshold}_reached'] = True
+    else:
+        disk_usage_stat[f'threshold_{threshold}_reached'] = False
     return(disk_usage_stat)
     #testing
     #print(f"Disk Check Location: {location}")
