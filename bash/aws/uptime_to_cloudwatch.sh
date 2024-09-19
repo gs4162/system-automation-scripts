@@ -6,6 +6,13 @@ HOSTNAME=$(hostname)
 #AWK the uptime command and get the part which shows days
 UPTIME_DAYS=$(uptime | awk '{print "days:"$3}')
 
+# If uptime doesn't include days, set to 0 days
+if [[ $UPTIME_DAYS == *:* ]]; then
+    UPTIME_DAYS=0
+fi
+
+
+
 # Print the output to verify
 echo "Hostname: $HOSTNAME"
 echo "Uptime: $UPTIME_DAYS"
