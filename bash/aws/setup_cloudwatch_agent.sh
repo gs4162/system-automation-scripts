@@ -2,10 +2,28 @@
 
 # Warning: This script will make significant changes to your system.
 
-# Function to display error messages
+# Function to display error messages and exit
 error_exit() {
     echo "Error: $1" 1>&2
     exit 1
+}
+
+# Function to check if a user exists
+user_exists() {
+    id "$1" &>/dev/null
+}
+
+# Function to add user to a group if not already a member
+add_user_to_group() {
+    local user=$1
+    local group=$2
+
+    if id -nG "$user" | grep -qw "$group"; then
+        echo "User '$user' is already a member of group '$group'."
+    else
+        sudo usermod -aG "$group" "$user" || error_exit "Failed to add user '$user' to group '$group'."
+        echo "Added user '$user' to group '$group'."
+    fi
 }
 
 # Check for root privileges
@@ -19,15 +37,29 @@ mkdir -p /tmp/cloudwatch || error_exit "Failed to create /tmp/cloudwatch directo
 cd /tmp/cloudwatch || error_exit "Failed to navigate to /tmp/cloudwatch directory."
 
 echo "Downloading the CloudWatch agent..."
-wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb || error_exit "Failed to download CloudWatch agent."
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -O amazon-cloudwatch-agent.deb || error_exit "Failed to download CloudWatch agent."
 
 echo "Installing the CloudWatch agent..."
 dpkg -i -E ./amazon-cloudwatch-agent.deb || error_exit "Failed to install CloudWatch agent."
 
 # Step 2: Create the cwagent user and add it to the adm group for log access
-echo "Creating 'cwagent' user and adding to 'adm' group for log access..."
-useradd -r -s /bin/false cwagent || echo "cwagent user already exists."
-usermod -aG adm cwagent || error_exit "Failed to add 'cwagent' to 'adm' group."
+echo "Ensuring 'cwagent' user exists and adding to 'adm' group for log access..."
+if user_exists "cwagent"; then
+    echo "User 'cwagent' already exists."
+else
+    useradd -r -s /bin/false cwagent || error_exit "Failed to create 'cwagent' user."
+    echo "Created 'cwagent' user."
+fi
+
+# Add 'cwagent' to 'adm' group
+add_user_to_group "cwagent" "adm"
+
+# Verify group membership
+if id -nG cwagent | grep -qw "adm"; then
+    echo "Verification: 'cwagent' is a member of 'adm' group."
+else
+    error_exit "'cwagent' is not a member of 'adm' group after attempting to add."
+fi
 
 # Step 3: Prompt the user for AWS credentials and region
 echo "Now we will create the AWS credentials and config files for the cwagent user."
@@ -65,6 +97,8 @@ EOL
 chmod 600 "$credentials_file" "$config_file" || error_exit "Failed to set permissions for credentials and config files."
 chown -R cwagent:cwagent /home/cwagent/.aws || error_exit "Failed to set ownership for /home/cwagent/.aws."
 
+echo "AWS credentials and config files created successfully for 'cwagent' user."
+
 # Step 5: Configure CloudWatch Agent common-config.toml
 echo "Configuring CloudWatch Agent common-config.toml..."
 
@@ -89,10 +123,11 @@ echo "Starting the CloudWatch agent configuration wizard..."
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-config-wizard
 
 # Step 7: Move the configuration file and rename it
+echo "Moving and renaming the configuration file..."
 mv /opt/aws/amazon-cloudwatch-agent/bin/config.json /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json || error_exit "Failed to move and rename the configuration file."
 
 # Step 8: Start and enable the CloudWatch Agent service
-echo "Starting the CloudWatch Agent service..."
+echo "Starting and enabling the CloudWatch Agent service..."
 systemctl enable amazon-cloudwatch-agent || error_exit "Failed to enable CloudWatch Agent service."
 systemctl start amazon-cloudwatch-agent || error_exit "Failed to start CloudWatch Agent service."
 
@@ -102,7 +137,7 @@ systemctl status amazon-cloudwatch-agent --no-pager
 
 # Step 10: Install collectd if not installed (optional, required for some metrics)
 echo "Checking if collectd is installed..."
-if ! dpkg -l | grep -q collectd; then
+if ! dpkg -l | grep -qw collectd; then
     echo "Installing collectd..."
     apt-get update && apt-get install -y collectd || error_exit "Failed to install collectd."
 else
