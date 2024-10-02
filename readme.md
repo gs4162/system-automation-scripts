@@ -16,7 +16,7 @@ This repository contains a collection of scripts for automating various system t
 
 1. Clone this repository:
     ```bash
-    git clone https://github.com/your-repo-url/system-automation-scripts.git
+    git clone https://github.com/gs4162/system-automation-scripts.git
     ```
 
 2. Navigate to the script you want to use and run it:
